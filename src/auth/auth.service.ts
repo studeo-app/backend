@@ -1,26 +1,88 @@
-import { Injectable } from '@nestjs/common';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common'
+import { getFirebaseAuth } from '../config/firebase.config'
+import { UsersDao } from '../daos/users.dao'
+import { normalizeUsername } from '../common/utils/username.util'
+import { RegisterDto } from './dto/register.dto'
 
 @Injectable()
 export class AuthService {
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
+  constructor(private readonly usersDao: UsersDao) {}
+
+  async checkUsername(username: string) {
+    const normalized = normalizeUsername(username)
+
+    if (!normalized) {
+      throw new BadRequestException('Username is required')
+    }
+
+    const taken = await this.usersDao.isUsernameTaken(normalized)
+
+    return {
+      username: normalized,
+      available: !taken,
+    }
   }
 
-  findAll() {
-    return `This action returns all auth`;
+  async register(dto: RegisterDto) {
+    const existingUid = await this.findUidByEmail(dto.email)
+    if (existingUid) {
+      throw new ConflictException('Email is already registered')
+    }
+
+    let uid: string
+
+    try {
+      const userRecord = await getFirebaseAuth().createUser({
+        email: dto.email,
+        password: dto.password,
+        displayName: `${dto.firstName} ${dto.lastName}`.trim(),
+      })
+      uid = userRecord.uid
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Registration failed'
+
+      if (message.includes('email-already-exists')) {
+        throw new ConflictException('Email is already registered')
+      }
+
+      throw new BadRequestException(message)
+    }
+
+    try {
+      const profile = await this.usersDao.createStub({
+        uid,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        authProvider: 'password',
+      })
+
+      return {
+        uid,
+        profileComplete: profile.profileComplete,
+        message:
+          'Account created. Complete your profile with username and avatar.',
+      }
+    } catch (error) {
+      await getFirebaseAuth().deleteUser(uid).catch(() => undefined)
+      throw new InternalServerErrorException(
+        'Account was created but profile could not be saved',
+      )
+    }
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
-
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+  private async findUidByEmail(email: string): Promise<string | null> {
+    try {
+      const user = await getFirebaseAuth().getUserByEmail(email)
+      return user.uid
+    } catch {
+      return null
+    }
   }
 }

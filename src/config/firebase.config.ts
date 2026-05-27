@@ -1,6 +1,6 @@
 import * as admin from 'firebase-admin'
 
-export function initializeFirebase() {
+export function initializeFirebase(): void {
   if (!admin.apps.length) {
     admin.initializeApp({
       credential: admin.credential.cert({
@@ -13,3 +13,11 @@ export function initializeFirebase() {
 }
 
 export const firebaseAdmin = admin
+
+export function getFirestore(): admin.firestore.Firestore {
+  return firebaseAdmin.firestore()
+}
+
+export function getFirebaseAuth(): admin.auth.Auth {
+  return firebaseAdmin.auth()
+}
