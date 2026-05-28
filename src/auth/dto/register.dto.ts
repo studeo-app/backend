@@ -28,8 +28,8 @@ export class RegisterDto {
   @ApiProperty({ example: 'SecurePass123!', minLength: 8 })
   @IsString()
   @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres.' })
-  @Matches(/^(?=.*[A-Z])(?=.*\d)/, {
-    message: 'La contraseña debe contener al menos una letra mayúscula y un número.',
+  @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>])/, {
+    message: 'La contraseña debe contener al menos una letra mayúscula, un número y un carácter especial.',
   })
   @MaxLength(128)
   password: string
