@@ -3,6 +3,7 @@ import {
   IsEmail,
   IsNotEmpty,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator'
@@ -26,7 +27,10 @@ export class RegisterDto {
 
   @ApiProperty({ example: 'SecurePass123!', minLength: 8 })
   @IsString()
-  @MinLength(8)
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres.' })
+  @Matches(/^(?=.*[A-Z])(?=.*\d)/, {
+    message: 'La contraseña debe contener al menos una letra mayúscula y un número.',
+  })
   @MaxLength(128)
   password: string
 }
