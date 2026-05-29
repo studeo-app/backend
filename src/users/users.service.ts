@@ -17,6 +17,21 @@ import { UpdateUserDto } from './dto/update-user.dto'
 export class UsersService {
   constructor(private readonly usersDao: UsersDao) {}
 
+  async checkUsername(username: string) {
+    const normalized = normalizeUsername(username)
+
+    if (!normalized) {
+      throw new BadRequestException('Username is required')
+    }
+
+    const taken = await this.usersDao.isUsernameTaken(normalized)
+
+    return {
+      username: normalized,
+      available: !taken,
+    }
+  }
+
   async getProfile(decoded: DecodedIdToken) {
     const user = await this.usersDao.findById(decoded.uid)
     const authProvider = this.resolveAuthProvider(decoded)
