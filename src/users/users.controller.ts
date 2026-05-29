@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Param,
   Patch,
   Post,
   Req,
@@ -17,6 +18,7 @@ import {
   ApiUnauthorizedResponse,
   ApiConflictResponse,
   ApiBadRequestResponse,
+  ApiParam,
   ApiTags,
 } from '@nestjs/swagger'
 import type { Request } from 'express'
@@ -30,16 +32,41 @@ import { UpdateUserDto } from './dto/update-user.dto'
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @Get('check-username/:username')
+  @ApiOperation({
+    summary: 'Verificar disponibilidad de nombre de usuario',
+    description:
+      'Comprueba en Firestore si el nombre de usuario suministrado está libre o ya se encuentra registrado por otro usuario.',
+  })
+  @ApiParam({
+    name: 'username',
+    description: 'Nombre de usuario a validar',
+    example: 'juanperez',
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la disponibilidad del nombre de usuario.',
+    schema: {
+      example: {
+        username: 'juanperez',
+        available: true,
+      },
+    },
+  })
+  @ApiBadRequestResponse({ description: 'Nombre de usuario vacío, inválido o malformado.' })
+  checkUsername(@Param('username') username: string) {
+    return this.usersService.checkUsername(username)
+  }
+
   @Get('profile')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Get authenticated user profile status',
+    summary: 'Obtener estado del perfil del usuario autenticado',
     description:
-      'Returns profile completion state for the current authenticated user. If incomplete, it includes suggested profile data from the token (Google/manual).',
+      'Retorna el estado del perfil en la base de datos de Firestore. Si el perfil está incompleto (profileComplete=false), sugiere la información extraída del token de Firebase.',
   })
   @ApiOkResponse({
-    description: 'Profile status resolved successfully',
+    description: 'Estado del perfil obtenido con éxito.',
     schema: {
       example: {
         profileComplete: false,
@@ -55,10 +82,10 @@ export class UsersController {
       },
     },
   })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid bearer token' })
+  @ApiUnauthorizedResponse({ description: 'Token de portador (Bearer token) inválido, ausente o expirado.' })
   getProfile(@Req() req: Request) {
     if (!req.user) {
-      throw new UnauthorizedException('Invalid token')
+      throw new UnauthorizedException('Token inválido o no suministrado')
     }
 
     return this.usersService.getProfile(req.user)
@@ -68,23 +95,26 @@ export class UsersController {
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Complete user profile with username and avatar',
+    summary: 'Completar el registro del perfil del usuario',
     description:
-      'Finalizes profile after registration/login. For manual accounts avatarUrl is required. For Google accounts avatarUrl can be omitted and Google picture will be used.',
+      'Finaliza la creación del perfil en Firestore asignando un nombre de usuario único y un avatar. Para cuentas de Google, si no se envía avatarUrl, se usará la foto de perfil de Google por defecto.',
   })
-  @ApiBody({ type: CompleteProfileDto })
+  @ApiBody({
+    type: CompleteProfileDto,
+    description: 'Datos requeridos para completar el perfil.',
+  })
   @ApiOkResponse({
-    description: 'Profile completed successfully',
+    description: 'Perfil de usuario completado y guardado con éxito.',
     schema: {
       example: {
         profileComplete: true,
         user: {
-          uid: 'abc123',
+          uid: 'abc123xyz',
           firstName: 'Juan',
           lastName: 'Perez',
           email: 'student@university.edu',
           username: 'juanperez',
-          avatarUrl: 'https://example.com/avatar.png',
+          avatarUrl: 'https://example.com/mi-avatar-personalizado.png',
           authProvider: 'google',
           profileComplete: true,
           createdAt: '2026-05-26T18:00:00.000Z',
@@ -93,12 +123,12 @@ export class UsersController {
       },
     },
   })
-  @ApiConflictResponse({ description: 'Username already taken or profile already complete' })
-  @ApiBadRequestResponse({ description: 'Invalid data or avatar required for manual account' })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid bearer token' })
+  @ApiConflictResponse({ description: 'El nombre de usuario ya está tomado o el perfil ya se encuentra completo.' })
+  @ApiBadRequestResponse({ description: 'Datos inválidos o avatarUrl ausente en cuenta de registro manual.' })
+  @ApiUnauthorizedResponse({ description: 'Token de portador (Bearer token) inválido, ausente o expirado.' })
   completeProfile(@Req() req: Request, @Body() dto: CompleteProfileDto) {
     if (!req.user) {
-      throw new UnauthorizedException('Invalid token')
+      throw new UnauthorizedException('Token inválido o no suministrado')
     }
 
     return this.usersService.completeProfile(req.user, dto)
@@ -108,22 +138,39 @@ export class UsersController {
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Update authenticated user profile',
+    summary: 'Actualizar datos del perfil de usuario',
     description:
-      'Updates profile data for the authenticated user. Validates username/email collisions.',
+      'Actualiza campos del perfil del usuario autenticado (nombre, apellido, email, username o avatar). Valida que no existan colisiones de correo o nombre de usuario.',
   })
-  @ApiBody({ type: UpdateUserDto })
+  @ApiBody({
+    type: UpdateUserDto,
+    description: 'Campos opcionales a modificar en el perfil.',
+  })
   @ApiOkResponse({
-    description: 'Profile updated successfully',
+    description: 'Perfil actualizado con éxito.',
+    schema: {
+      example: {
+        uid: 'abc123xyz',
+        firstName: 'Juan Modificado',
+        lastName: 'Perez',
+        email: 'nuevo.correo@university.edu',
+        username: 'juanpereznuevo',
+        avatarUrl: 'https://example.com/nuevo-avatar.png',
+        authProvider: 'password',
+        profileComplete: true,
+        createdAt: '2026-05-26T18:00:00.000Z',
+        updatedAt: '2026-05-29T12:00:00.000Z',
+      },
+    },
   })
   @ApiConflictResponse({
-    description: 'Username or email already in use',
+    description: 'El correo electrónico o nombre de usuario solicitado ya está en uso por otra cuenta.',
   })
-  @ApiBadRequestResponse({ description: 'Invalid payload' })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid bearer token' })
+  @ApiBadRequestResponse({ description: 'El payload enviado contiene campos inválidos o mal formateados.' })
+  @ApiUnauthorizedResponse({ description: 'Token de portador (Bearer token) inválido, ausente o expirado.' })
   updateProfile(@Req() req: Request, @Body() dto: UpdateUserDto) {
     if (!req.user) {
-      throw new UnauthorizedException('Invalid token')
+      throw new UnauthorizedException('Token inválido o no suministrado')
     }
 
     return this.usersService.updateProfile(req.user, dto)
@@ -133,12 +180,12 @@ export class UsersController {
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Delete authenticated user account',
+    summary: 'Eliminar cuenta y perfil del usuario',
     description:
-      'Deletes the authenticated user profile from Firestore and removes the account from Firebase Auth.',
+      'Elimina de forma permanente el documento del perfil de Firestore, el nombre de usuario reservado y la cuenta del sistema de Firebase Auth.',
   })
   @ApiOkResponse({
-    description: 'Account deleted successfully',
+    description: 'Cuenta y perfil eliminados correctamente.',
     schema: {
       example: {
         deleted: true,
@@ -146,10 +193,10 @@ export class UsersController {
       },
     },
   })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid bearer token' })
+  @ApiUnauthorizedResponse({ description: 'Token de portador (Bearer token) inválido, ausente o expirado.' })
   deleteProfile(@Req() req: Request) {
     if (!req.user) {
-      throw new UnauthorizedException('Invalid token')
+      throw new UnauthorizedException('Token inválido o no suministrado')
     }
 
     return this.usersService.deleteProfile(req.user)

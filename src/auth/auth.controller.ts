@@ -1,14 +1,15 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common'
+import { Body, Controller, HttpCode, HttpStatus, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common'
 import {
-  ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiBody,
-  ApiConflictResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiParam,
   ApiResponse,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger'
+import type { Request } from 'express'
+import { FirebaseAuthGuard } from './guards/firebase-auth/firebase-auth.guard'
 import { AuthService } from './auth.service'
 import { RegisterDto } from './dto/register.dto'
 
@@ -17,43 +18,51 @@ import { RegisterDto } from './dto/register.dto'
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Get('check-username/:username')
+  @Post('register')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Check username availability',
+    summary: 'Registrar o sincronizar usuario autenticado',
     description:
-      'Validates if a username is available before profile completion or registration confirmation.',
+      'Valida el token de Firebase Auth del usuario. Si el usuario no existe en Firestore, crea un perfil inicial (stub) con profileComplete=false. Si ya existe, retorna el perfil actual.',
   })
-  @ApiParam({
-    name: 'username',
-    description: 'Desired username to validate',
-    example: 'juanperez',
+  @ApiBody({
+    type: RegisterDto,
+    description: 'Datos del usuario para el registro inicial (opcionales para inicio con Google).',
   })
   @ApiOkResponse({
-    description: 'Availability result',
+    description: 'Perfil registrado o sincronizado con éxito.',
     schema: {
       example: {
-        username: 'juanperez',
-        available: true,
+        uid: 'abc123xyz',
+        profileComplete: false,
+        message: 'Profile registered and stub created.',
+        user: {
+          uid: 'abc123xyz',
+          firstName: 'Juan',
+          lastName: 'Perez',
+          email: 'juan.perez@university.edu',
+          authProvider: 'password',
+          profileComplete: false,
+          createdAt: '2026-05-29T12:00:00.000Z',
+          updatedAt: '2026-05-29T12:00:00.000Z',
+        },
       },
     },
   })
-  @ApiBadRequestResponse({ description: 'Username is required or invalid' })
-  checkUsername(@Param('username') username: string) {
-    return this.authService.checkUsername(username)
-  }
-
-  @Post('register')
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({
-    summary: 'Manual registration (step 1)',
-    description:
-      'Creates Firebase Auth account and a Firestore profile stub with profileComplete=false. Username and avatar are completed later in /users/complete-profile.',
+  @ApiUnauthorizedResponse({
+    description: 'Token de portador (Bearer token) inválido, expirado o faltante.',
   })
-  @ApiBody({ type: RegisterDto })
-  @ApiResponse({ status: 201, description: 'Account created' })
-  @ApiConflictResponse({ description: 'Email already registered' })
-  @ApiBadRequestResponse({ description: 'Invalid email/password or malformed payload' })
-  register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto)
+  @ApiResponse({
+    status: 400,
+    description: 'Petición malformada o payload inválido.',
+  })
+  register(@Req() req: Request, @Body() registerDto: RegisterDto) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado')
+    }
+    return this.authService.registerOrSync(req.user, registerDto)
   }
 }
+
