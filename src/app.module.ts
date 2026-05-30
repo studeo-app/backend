@@ -5,6 +5,7 @@ import { UsersModule } from './users/users.module'
 import { RoomsModule } from './rooms/rooms.module'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
+import { HealthModule } from './health/health.module'
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { AppService } from './app.service'
     AuthModule,
     UsersModule,
     RoomsModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
