@@ -1,26 +1,53 @@
-import { Injectable } from '@nestjs/common';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import {
+  Injectable,
+} from '@nestjs/common'
+import type { DecodedIdToken } from 'firebase-admin/auth'
+import { UsersDao } from '../daos/users.dao'
+import { splitDisplayName } from '../common/utils/name.util'
+import { RegisterDto } from './dto/register.dto'
 
 @Injectable()
 export class AuthService {
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
-  }
+  constructor(private readonly usersDao: UsersDao) {}
 
-  findAll() {
-    return `This action returns all auth`;
-  }
+  async registerOrSync(decoded: DecodedIdToken, dto: RegisterDto) {
+    const uid = decoded.uid
+    const existing = await this.usersDao.findById(uid)
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
+    if (existing) {
+      return {
+        uid,
+        profileComplete: existing.profileComplete,
+        user: existing,
+        message: 'Profile already synchronized.',
+      }
+    }
 
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
+    const provider = decoded.firebase?.sign_in_provider === 'google.com' ? 'google' : 'password'
 
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+    let firstName = dto.firstName
+    let lastName = dto.lastName
+
+    if (!firstName && !lastName) {
+      const split = splitDisplayName(decoded.name)
+      firstName = split.firstName
+      lastName = split.lastName
+    }
+
+    const profile = await this.usersDao.createStub({
+      uid,
+      firstName: firstName || '',
+      lastName: lastName || '',
+      email: decoded.email ?? '',
+      authProvider: provider,
+    })
+
+    return {
+      uid,
+      profileComplete: profile.profileComplete,
+      user: profile,
+      message: 'Profile registered and stub created.',
+    }
   }
 }
+
