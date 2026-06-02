@@ -1,26 +1,76 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
+import type { DecodedIdToken } from 'firebase-admin/auth';
+import { RoomsDao, CreateRoomData, Room } from '../daos/rooms.dao';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
 @Injectable()
 export class RoomsService {
-  create(createRoomDto: CreateRoomDto) {
-    return 'This action adds a new room';
+  constructor(private readonly roomsDao: RoomsDao) {}
+
+  async createRoom(decoded: DecodedIdToken, dto: CreateRoomDto): Promise<Room> {
+    const createData: CreateRoomData = {
+      name: dto.name.trim(),
+      ownerUid: decoded.uid,
+    };
+
+    return this.roomsDao.create(createData);
   }
 
-  findAll() {
-    return `This action returns all rooms`;
+  async getMyRooms(decoded: DecodedIdToken): Promise<Room[]> {
+    return this.roomsDao.findByOwner(decoded.uid);
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} room`;
+  async getRoomById(decoded: DecodedIdToken, roomId: string): Promise<Room> {
+    const room = await this.roomsDao.findById(roomId);
+
+    if (!room) {
+      throw new NotFoundException(`Room with id ${roomId} was not found`);
+    }
+
+    return room;
   }
 
-  update(id: number, updateRoomDto: UpdateRoomDto) {
-    return `This action updates a #${id} room`;
+  async updateRoom(
+    decoded: DecodedIdToken,
+    roomId: string,
+    dto: UpdateRoomDto,
+  ): Promise<Room> {
+    const room = await this.roomsDao.findById(roomId);
+
+    if (!room) {
+      throw new NotFoundException(`Room with id ${roomId} was not found`);
+    }
+
+    // Solo el anfitrión puede editar la sala
+    if (room.ownerUid !== decoded.uid) {
+      throw new ForbiddenException('Only the room owner can update this room');
+    }
+
+    const updateData: Partial<Room> = {};
+    if (dto.name !== undefined) {
+      updateData.name = dto.name.trim();
+    }
+
+    return this.roomsDao.update(roomId, updateData);
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} room`;
+  async deleteRoom(decoded: DecodedIdToken, roomId: string): Promise<void> {
+    const room = await this.roomsDao.findById(roomId);
+
+    if (!room) {
+      throw new NotFoundException(`Room with id ${roomId} was not found`);
+    }
+
+    // Solo el anfitrión puede eliminar la sala
+    if (room.ownerUid !== decoded.uid) {
+      throw new ForbiddenException('Only the room owner can delete this room');
+    }
+
+    await this.roomsDao.delete(roomId);
   }
 }

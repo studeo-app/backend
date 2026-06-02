@@ -1,26 +1,26 @@
-import { ApiPropertyOptional } from '@nestjs/swagger'
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsEmail,
+  // IsEmail,
   IsOptional,
   IsString,
   IsUrl,
   Matches,
   MaxLength,
-} from 'class-validator'
-import { USERNAME_REGEX } from '../../common/utils/username.util'
+} from 'class-validator';
+import { USERNAME_REGEX } from '../../common/utils/username.util';
 
 export class UpdateUserDto {
   @ApiPropertyOptional({ example: 'Juan' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  firstName?: string
+  firstName?: string;
 
   @ApiPropertyOptional({ example: 'Perez' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  lastName?: string
+  lastName?: string;
 
   @ApiPropertyOptional({ example: 'juanperez' })
   @IsOptional()
@@ -29,15 +29,15 @@ export class UpdateUserDto {
     message:
       'Username must be 3-20 characters and contain only lowercase letters, numbers, and underscores',
   })
-  username?: string
+  username?: string;
 
   @ApiPropertyOptional({ example: 'https://example.com/avatar.png' })
   @IsOptional()
   @IsUrl()
-  avatarUrl?: string
+  avatarUrl?: string;
 
-  @ApiPropertyOptional({ example: 'juan.perez@universidad.edu' })
-  @IsOptional()
-  @IsEmail()
-  email?: string
+  // @ApiPropertyOptional({ example: 'juan.perez@universidad.edu' })
+  // @IsOptional()
+  // @IsEmail()
+  // email?: string;
 }

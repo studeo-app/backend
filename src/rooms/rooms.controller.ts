@@ -1,34 +1,211 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiOkResponse,
+  ApiUnauthorizedResponse,
+  ApiNotFoundResponse,
+  ApiForbiddenResponse,
+  ApiParam,
+  ApiTags,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
+import type { Request } from 'express';
+import { FirebaseAuthGuard } from '../auth/guards/firebase-auth/firebase-auth.guard';
 import { RoomsService } from './rooms.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
+@ApiTags('rooms')
 @Controller('rooms')
+@UseGuards(FirebaseAuthGuard)
+@ApiBearerAuth()
 export class RoomsController {
   constructor(private readonly roomsService: RoomsService) {}
 
   @Post()
-  create(@Body() createRoomDto: CreateRoomDto) {
-    return this.roomsService.create(createRoomDto);
+  @ApiOperation({
+    summary: 'Crear una nueva sala',
+    description:
+      'Crea una nueva sala de estudio y asigna automáticamente al usuario autenticado como anfitrión. Genera un ID único para la sala.',
+  })
+  @ApiBody({
+    type: CreateRoomDto,
+    description: 'Datos requeridos para crear la sala.',
+  })
+  @ApiCreatedResponse({
+    description: 'Sala creada exitosamente.',
+    schema: {
+      example: {
+        id: 'abc123xyz',
+        name: 'Sala de Estudio Matemáticas',
+        ownerUid: 'user123',
+        createdAt: '2026-06-02T10:00:00.000Z',
+        updatedAt: '2026-06-02T10:00:00.000Z',
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
+  async createRoom(@Req() req: Request, @Body() dto: CreateRoomDto) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado');
+    }
+
+    return this.roomsService.createRoom(req.user, dto);
   }
 
-  @Get()
-  findAll() {
-    return this.roomsService.findAll();
+  @Get('my-rooms')
+  @ApiOperation({
+    summary: 'Obtener mis salas',
+    description:
+      'Retorna una lista de todas las salas creadas por el usuario autenticado, ordenadas por fecha de creación (más recientes primero).',
+  })
+  @ApiOkResponse({
+    description: 'Lista de salas del usuario.',
+    schema: {
+      example: [
+        {
+          id: 'abc123xyz',
+          name: 'Sala de Estudio Matemáticas',
+          ownerUid: 'user123',
+          createdAt: '2026-06-02T10:00:00.000Z',
+          updatedAt: '2026-06-02T10:00:00.000Z',
+        },
+      ],
+    },
+  })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
+  async getMyRooms(@Req() req: Request) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado');
+    }
+
+    return this.roomsService.getMyRooms(req.user);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.roomsService.findOne(+id);
+  @Get(':roomId')
+  @ApiOperation({
+    summary: 'Obtener detalles de una sala',
+    description:
+      'Retorna la información completa de una sala específica por su ID.',
+  })
+  @ApiParam({
+    name: 'roomId',
+    description: 'ID único de la sala',
+    example: 'abc123xyz',
+  })
+  @ApiOkResponse({
+    description: 'Detalles de la sala.',
+    schema: {
+      example: {
+        id: 'abc123xyz',
+        name: 'Sala de Estudio Matemáticas',
+        ownerUid: 'user123',
+        createdAt: '2026-06-02T10:00:00.000Z',
+        updatedAt: '2026-06-02T10:00:00.000Z',
+      },
+    },
+  })
+  @ApiNotFoundResponse({ description: 'Sala no encontrada.' })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
+  async getRoomById(@Req() req: Request, @Param('roomId') roomId: string) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado');
+    }
+
+    return this.roomsService.getRoomById(req.user, roomId);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto) {
-    return this.roomsService.update(+id, updateRoomDto);
+  @Patch(':roomId')
+  @ApiOperation({
+    summary: 'Editar una sala',
+    description:
+      'Permite al anfitrión editar el nombre de la sala. Solo el propietario puede realizar esta acción.',
+  })
+  @ApiParam({
+    name: 'roomId',
+    description: 'ID único de la sala',
+    example: 'abc123xyz',
+  })
+  @ApiBody({
+    type: UpdateRoomDto,
+    description: 'Campos opcionales a modificar.',
+  })
+  @ApiOkResponse({
+    description: 'Sala actualizada exitosamente.',
+    schema: {
+      example: {
+        id: 'abc123xyz',
+        name: 'Sala de Estudio Matemáticas Avanzadas',
+        ownerUid: 'user123',
+        createdAt: '2026-06-02T10:00:00.000Z',
+        updatedAt: '2026-06-02T11:00:00.000Z',
+      },
+    },
+  })
+  @ApiNotFoundResponse({ description: 'Sala no encontrada.' })
+  @ApiForbiddenResponse({
+    description: 'Solo el propietario puede editar esta sala.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
+  async updateRoom(
+    @Req() req: Request,
+    @Param('roomId') roomId: string,
+    @Body() dto: UpdateRoomDto,
+  ) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado');
+    }
+
+    return this.roomsService.updateRoom(req.user, roomId, dto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.roomsService.remove(+id);
+  @Delete(':roomId')
+  @ApiOperation({
+    summary: 'Eliminar una sala',
+    description:
+      'Elimina permanentemente una sala. Solo el anfitrión puede realizar esta acción.',
+  })
+  @ApiParam({
+    name: 'roomId',
+    description: 'ID único de la sala',
+    example: 'abc123xyz',
+  })
+  @ApiOkResponse({
+    description: 'Sala eliminada exitosamente.',
+    schema: {
+      example: {
+        deleted: true,
+        message: 'Room deleted successfully',
+      },
+    },
+  })
+  @ApiNotFoundResponse({ description: 'Sala no encontrada.' })
+  @ApiForbiddenResponse({
+    description: 'Solo el propietario puede eliminar esta sala.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
+  async deleteRoom(@Req() req: Request, @Param('roomId') roomId: string) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado');
+    }
+
+    await this.roomsService.deleteRoom(req.user, roomId);
+    return {
+      deleted: true,
+      message: 'Room deleted successfully',
+    };
   }
 }
