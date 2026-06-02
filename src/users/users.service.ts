@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { getFirebaseAuth } from '../config/firebase.config';
@@ -146,18 +147,10 @@ export class UsersService {
       }
     }
 
-    // if (dto.email) {
-    //   const owner = await this.findUidByEmail(dto.email);
-    //   if (owner && owner !== uid) {
-    //     throw new ConflictException('Email is already in use');
-    //   }
-    // }
-
     try {
       const user = await this.usersDao.update(uid, {
         firstName: dto.firstName,
         lastName: dto.lastName,
-        // email: dto.email,
         username: dto.username ? normalizeUsername(dto.username) : undefined,
         avatarUrl: dto.avatarUrl,
         profileComplete: existing.profileComplete,
@@ -165,7 +158,6 @@ export class UsersService {
 
       await getFirebaseAuth()
         .updateUser(uid, {
-          // email: user.email,
           displayName: `${user.firstName} ${user.lastName}`.trim(),
           photoURL: user.avatarUrl,
         })
@@ -193,17 +185,32 @@ export class UsersService {
     }
 
     try {
+      // 1. Eliminar primero de Firestore (más seguro dejar Auth como respaldo temporal)
       await this.usersDao.delete(uid);
-      await getFirebaseAuth()
-        .deleteUser(uid)
-        .catch(() => undefined);
+
+      // 2. Eliminar de Firebase Auth
+      // Si el token es antiguo, esto lanzará auth/requires-recent-login
+      await getFirebaseAuth().deleteUser(uid);
+
       return {
         deleted: true,
         message: 'Account deleted successfully',
       };
-    } catch (error) {
-      if (error instanceof Error && error.message === 'USER_NOT_FOUND') {
-        throw new NotFoundException(`User with id ${uid} was not found`);
+    } catch (error: any) {
+      // Manejo explícito de reautenticación requerida (Escenario 3 US-05)
+      if (error.code === 'auth/requires-recent-login') {
+        throw new UnauthorizedException({
+          message: 'Re-authentication required to delete account',
+          code: 'REQUIRES_RECENT_LOGIN',
+        });
+      }
+
+      // Si el usuario ya no existe en Auth pero sí en Firestore, consideramos éxito parcial
+      if (error.code === 'auth/user-not-found') {
+        return {
+          deleted: true,
+          message: 'Firestore profile deleted. Auth user was already removed.',
+        };
       }
 
       throw error;
@@ -218,14 +225,5 @@ export class UsersService {
     }
 
     return 'password';
-  }
-
-  private async findUidByEmail(email: string): Promise<string | null> {
-    try {
-      const user = await getFirebaseAuth().getUserByEmail(email);
-      return user.uid;
-    } catch {
-      return null;
-    }
   }
 }
