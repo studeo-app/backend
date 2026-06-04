@@ -7,8 +7,14 @@ export function splitDisplayName(displayName?: string): {
   }
 
   const parts = displayName.trim().split(/\s+/)
-  const firstName = parts[0] ?? ''
-  const lastName = parts.slice(1).join(' ')
-
-  return { firstName, lastName }
+  
+  if (parts.length > 2) {
+    const firstName = parts.slice(0, -2).join(' ')
+    const lastName = parts.slice(-2).join(' ')
+    return { firstName, lastName }
+  } else {
+    const firstName = parts[0] ?? ''
+    const lastName = parts[1] ?? ''
+    return { firstName, lastName }
+  }
 }
