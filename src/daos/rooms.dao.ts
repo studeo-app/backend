@@ -7,6 +7,7 @@ const ROOMS_COLLECTION = 'rooms';
 export interface CreateRoomData {
   name: string;
   ownerUid: string;
+  imageUrl?: string;
 }
 
 export interface Room {
@@ -15,6 +16,7 @@ export interface Room {
   ownerUid: string;
   createdAt: string;
   updatedAt: string;
+  imageUrl?: string;
 }
 
 @Injectable()
@@ -35,6 +37,7 @@ export class RoomsDao {
       ownerUid: String(data.ownerUid ?? ''),
       createdAt: String(data.createdAt ?? ''),
       updatedAt: String(data.updatedAt ?? ''),
+      imageUrl: data.imageUrl ? String(data.imageUrl) : undefined,
     };
   }
 
@@ -64,6 +67,10 @@ export class RoomsDao {
       createdAt: now,
       updatedAt: now,
     };
+
+    if (data.imageUrl) {
+      room.imageUrl = data.imageUrl;
+    }
 
     await this.rooms.doc(roomId).set(room);
     return room;
