@@ -8,6 +8,7 @@ import {
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { getFirebaseAuth } from '../config/firebase.config';
 import { UsersDao } from '../daos/users.dao';
+import { RoomsDao } from '../daos/rooms.dao';
 import { splitDisplayName } from '../common/utils/name.util';
 import { normalizeUsername } from '../common/utils/username.util';
 import type { AuthProvider, User } from './entities/user.entity';
@@ -16,7 +17,10 @@ import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly usersDao: UsersDao) {}
+  constructor(
+    private readonly usersDao: UsersDao,
+    private readonly roomsDao: RoomsDao,
+  ) {}
 
   async checkUsername(username: string) {
     const normalized = normalizeUsername(username);
@@ -138,6 +142,15 @@ export class UsersService {
       throw new NotFoundException(`User with id ${uid} was not found`);
     }
 
+    if (dto.email) {
+      const emailDomain = dto.email.toLowerCase().split('@')[1] ?? '';
+      if (!/\.edu(\.[a-z]{2,})?$/.test(emailDomain)) {
+        throw new BadRequestException(
+          'Debes usar un correo electrónico institucional (.edu)',
+        );
+      }
+    }
+
     if (dto.username) {
       const normalized = normalizeUsername(dto.username);
       const taken = await this.usersDao.isUsernameTaken(normalized, uid);
@@ -153,6 +166,7 @@ export class UsersService {
         lastName: dto.lastName,
         username: dto.username ? normalizeUsername(dto.username) : undefined,
         avatarUrl: dto.avatarUrl,
+        email: dto.email ? dto.email.trim().toLowerCase() : undefined,
         profileComplete: existing.profileComplete,
       });
 
@@ -185,36 +199,32 @@ export class UsersService {
     }
 
     try {
-      // 1. Eliminar primero de Firestore (más seguro dejar Auth como respaldo temporal)
-      await this.usersDao.delete(uid);
-
-      // 2. Eliminar de Firebase Auth
-      // Si el token es antiguo, esto lanzará auth/requires-recent-login
+      // 1. Eliminar primero de Firebase Auth para evitar cuentas huérfanas
       await getFirebaseAuth().deleteUser(uid);
-
-      return {
-        deleted: true,
-        message: 'Account deleted successfully',
-      };
     } catch (error: any) {
-      // Manejo explícito de reautenticación requerida (Escenario 3 US-05)
-      if (error.code === 'auth/requires-recent-login') {
-        throw new UnauthorizedException({
-          message: 'Re-authentication required to delete account',
-          code: 'REQUIRES_RECENT_LOGIN',
-        });
+      // Si el usuario ya no existe en Auth, procedemos a limpiar Firestore
+      // Si es otro error (por ejemplo, red o permisos), lo lanzamos para detener la operación
+      if (error.code !== 'auth/user-not-found') {
+        if (error.code === 'auth/requires-recent-login') {
+          throw new UnauthorizedException({
+            message: 'Re-authentication required to delete account',
+            code: 'REQUIRES_RECENT_LOGIN',
+          });
+        }
+        throw error;
       }
-
-      // Si el usuario ya no existe en Auth pero sí en Firestore, consideramos éxito parcial
-      if (error.code === 'auth/user-not-found') {
-        return {
-          deleted: true,
-          message: 'Firestore profile deleted. Auth user was already removed.',
-        };
-      }
-
-      throw error;
     }
+
+    // 2. Eliminar rooms creados por el usuario en Firestore
+    await this.roomsDao.deleteByOwner(uid);
+
+    // 3. Eliminar usuario y username reservado de Firestore
+    await this.usersDao.delete(uid);
+
+    return {
+      deleted: true,
+      message: 'Account deleted successfully',
+    };
   }
 
   private resolveAuthProvider(decoded: DecodedIdToken): AuthProvider {
