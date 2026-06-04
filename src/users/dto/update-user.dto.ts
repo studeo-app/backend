@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  // IsEmail,
+  IsEmail,
   IsOptional,
   IsString,
   IsUrl,
@@ -36,8 +36,8 @@ export class UpdateUserDto {
   @IsUrl()
   avatarUrl?: string;
 
-  // @ApiPropertyOptional({ example: 'juan.perez@universidad.edu' })
-  // @IsOptional()
-  // @IsEmail()
-  // email?: string;
+  @ApiPropertyOptional({ example: 'juan.perez@universidad.edu' })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 }
