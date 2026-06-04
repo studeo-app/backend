@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength, MaxLength, Matches } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, MinLength, MaxLength, Matches, IsOptional, IsUrl } from 'class-validator';
 
 export class CreateRoomDto {
   @ApiProperty({
@@ -17,5 +17,14 @@ export class CreateRoomDto {
     message:
       'El nombre de la sala solo puede contener letras, números y espacios',
   })
-  name!: string; // <-- El operador ! resuelve el error
+  name!: string;
+
+  @ApiPropertyOptional({
+    example: 'https://res.cloudinary.com/...',
+    description: 'URL de la imagen de portada de la sala',
+  })
+  @IsString()
+  @IsUrl({}, { message: 'La imagen de portada debe ser una URL válida' })
+  @IsOptional()
+  imageUrl?: string;
 }

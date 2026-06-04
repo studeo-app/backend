@@ -11,16 +11,16 @@ import { UpdateRoomDto } from './dto/update-room.dto';
 @Injectable()
 export class RoomsService {
   constructor(private readonly roomsDao: RoomsDao) {}
-
   async createRoom(decoded: DecodedIdToken, dto: CreateRoomDto): Promise<Room> {
+    const cleanName = dto.name.trim().replace(/\s+/g, ' ');
     const createData: CreateRoomData = {
-      name: dto.name.trim(),
+      name: cleanName,
       ownerUid: decoded.uid,
+      imageUrl: dto.imageUrl,
     };
 
     return this.roomsDao.create(createData);
   }
-
   async getMyRooms(decoded: DecodedIdToken): Promise<Room[]> {
     return this.roomsDao.findByOwner(decoded.uid);
   }
