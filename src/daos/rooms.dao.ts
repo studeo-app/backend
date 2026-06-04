@@ -101,4 +101,19 @@ export class RoomsDao {
 
     await this.rooms.doc(roomId).delete();
   }
+
+  async deleteByOwner(ownerUid: string): Promise<void> {
+    const rooms = await this.findByOwner(ownerUid);
+    if (rooms.length === 0) return;
+
+    const db = getFirestore();
+    const batch = db.batch();
+
+    for (const room of rooms) {
+      batch.delete(this.rooms.doc(room.id));
+    }
+
+    await batch.commit();
+  }
 }
+
