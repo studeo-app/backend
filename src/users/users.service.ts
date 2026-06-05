@@ -37,6 +37,21 @@ export class UsersService {
     };
   }
 
+  async checkEmail(email: string) {
+    const normalized = email.trim().toLowerCase();
+
+    if (!normalized) {
+      throw new BadRequestException('Email is required');
+    }
+
+    const taken = await this.usersDao.isEmailTaken(normalized);
+
+    return {
+      email: normalized,
+      available: !taken,
+    };
+  }
+
   async getProfile(decoded: DecodedIdToken) {
     const user = await this.usersDao.findById(decoded.uid);
     const authProvider = this.resolveAuthProvider(decoded);
@@ -148,6 +163,11 @@ export class UsersService {
         throw new BadRequestException(
           'Debes usar un correo electrónico institucional (.edu)',
         );
+      }
+
+      const emailTaken = await this.usersDao.isEmailTaken(dto.email, uid);
+      if (emailTaken) {
+        throw new ConflictException('Email is already in use');
       }
     }
 

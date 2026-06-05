@@ -75,6 +75,18 @@ export class UsersDao {
     return excludeUid ? data.uid !== excludeUid : true
   }
 
+  async isEmailTaken(email: string, excludeUid?: string): Promise<boolean> {
+    const query = this.users.where('email', '==', email.trim().toLowerCase())
+    const snapshot = await query.get()
+    if (snapshot.empty) return false
+
+    if (excludeUid) {
+      const docs = snapshot.docs
+      return docs.some((doc) => doc.id !== excludeUid)
+    }
+    return true
+  }
+
   async createStub(data: CreateUserStubData): Promise<User> {
     const now = new Date().toISOString()
     const user: User = {
