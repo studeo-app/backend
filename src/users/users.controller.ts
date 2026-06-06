@@ -57,6 +57,31 @@ export class UsersController {
     return this.usersService.checkUsername(username)
   }
 
+  @Get('check-email/:email')
+  @ApiOperation({
+    summary: 'Verificar disponibilidad de correo electrónico',
+    description:
+      'Comprueba en Firestore si el correo electrónico suministrado está libre o ya se encuentra registrado por otro usuario.',
+  })
+  @ApiParam({
+    name: 'email',
+    description: 'Correo electrónico a validar',
+    example: 'juanperez@universidad.edu',
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la disponibilidad del correo electrónico.',
+    schema: {
+      example: {
+        email: 'juanperez@universidad.edu',
+        available: true,
+      },
+    },
+  })
+  @ApiBadRequestResponse({ description: 'Correo electrónico vacío, inválido o malformado.' })
+  checkEmail(@Param('email') email: string) {
+    return this.usersService.checkEmail(email)
+  }
+
   @Get('profile')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
