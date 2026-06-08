@@ -20,7 +20,7 @@ export class UsersService {
   constructor(
     private readonly usersDao: UsersDao,
     private readonly roomsDao: RoomsDao,
-  ) {}
+  ) { }
 
   async checkUsername(username: string) {
     const normalized = normalizeUsername(username);
@@ -79,6 +79,15 @@ export class UsersService {
       authProvider,
       user,
       suggestedProfile: null,
+    };
+  }
+
+  async getBasicProfile(decoded: DecodedIdToken) {
+    const user = await this.usersDao.findById(decoded.uid);
+    return {
+      username: user?.username || '',
+      firstName: user?.firstName || '',
+      lastName: user?.lastName || '',
     };
   }
 

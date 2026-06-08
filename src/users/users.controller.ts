@@ -30,7 +30,7 @@ import { UpdateUserDto } from './dto/update-user.dto'
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Get('check-username/:username')
   @ApiOperation({
@@ -114,6 +114,32 @@ export class UsersController {
     }
 
     return this.usersService.getProfile(req.user)
+  }
+
+  @Get('profile/basic')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Obtener información básica del perfil del usuario autenticado (username, nombre y apellido)',
+    description: 'Retorna solo el nombre de usuario (username), el nombre (firstName) y el apellido (lastName) del perfil.',
+  })
+  @ApiOkResponse({
+    description: 'Información básica del perfil obtenida con éxito.',
+    schema: {
+      example: {
+        username: 'juanperez',
+        firstName: 'Juan',
+        lastName: 'Perez',
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({ description: 'Token de portador (Bearer token) inválido, ausente o expirado.' })
+  getBasicProfile(@Req() req: Request) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado')
+    }
+
+    return this.usersService.getBasicProfile(req.user)
   }
 
   @Post('complete-profile')
