@@ -117,6 +117,36 @@ export class RoomsController {
     return this.roomsService.joinRoom(req.user, roomId);
   }
 
+  @Get('my-rooms/members')
+  @ApiOperation({
+    summary: 'Obtener miembros de mis salas',
+    description:
+      'Retorna un mapa de roomId a miembros para todas las salas del dashboard del usuario.',
+  })
+  @ApiOkResponse({ description: 'Mapa de miembros por sala.' })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
+  async getMyRoomsMembers(@Req() req: Request) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado');
+    }
+
+    console.log('[RoomsController] getMyRoomsMembers:start', {
+      uid: req.user.uid,
+    });
+    const result = await this.roomsService.getMyRoomsMembers(req.user);
+    console.log('[RoomsController] getMyRoomsMembers:success', {
+      uid: req.user.uid,
+      roomIds: Object.keys(result),
+      counts: Object.fromEntries(
+        Object.entries(result).map(([roomId, members]) => [
+          roomId,
+          members.length,
+        ]),
+      ),
+    });
+    return result;
+  }
+
   @Get(':roomId/members')
   @ApiOperation({
     summary: 'Obtener miembros de una sala',
@@ -136,7 +166,17 @@ export class RoomsController {
       throw new UnauthorizedException('Token inválido o no suministrado');
     }
 
-    return this.roomsService.getRoomMembers(req.user, roomId);
+    console.log('[RoomsController] getRoomMembers:start', {
+      uid: req.user.uid,
+      roomId,
+    });
+    const result = await this.roomsService.getRoomMembers(req.user, roomId);
+    console.log('[RoomsController] getRoomMembers:success', {
+      uid: req.user.uid,
+      roomId,
+      count: result.length,
+    });
+    return result;
   }
 
   @Get(':roomId')
