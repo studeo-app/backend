@@ -88,6 +88,7 @@ export class UsersService {
       username: user?.username || '',
       firstName: user?.firstName || '',
       lastName: user?.lastName || '',
+      avatarUrl: user?.avatarUrl || '',
     };
   }
 

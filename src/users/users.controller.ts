@@ -120,8 +120,8 @@ export class UsersController {
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Obtener información básica del perfil del usuario autenticado (username, nombre y apellido)',
-    description: 'Retorna solo el nombre de usuario (username), el nombre (firstName) y el apellido (lastName) del perfil.',
+    summary: 'Obtener información básica del perfil del usuario autenticado (username, nombre, apellido y avatar)',
+    description: 'Retorna solo el nombre de usuario (username), el nombre (firstName) y el apellido (lastName) y el avatar (avatarUrl) del perfil.',
   })
   @ApiOkResponse({
     description: 'Información básica del perfil obtenida con éxito.',
@@ -130,6 +130,7 @@ export class UsersController {
         username: 'juanperez',
         firstName: 'Juan',
         lastName: 'Perez',
+        avatarUrl: 'https:cloudinary.com/avatar.jpg',
       },
     },
   })
