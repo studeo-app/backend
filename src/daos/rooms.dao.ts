@@ -3,6 +3,7 @@ import { getFirestore } from '../config/firebase.config';
 import type { UpdateData } from 'firebase-admin/firestore';
 
 const ROOMS_COLLECTION = 'rooms';
+const MEMBERS_COLLECTION = 'miembros';
 
 export interface CreateRoomData {
   name: string;
@@ -19,10 +20,32 @@ export interface Room {
   imageUrl?: string;
 }
 
+export interface RoomMember {
+  id: string;
+  roomId: string;
+  uid: string;
+  joinedAt: string;
+}
+
+export interface RoomMemberProfile extends RoomMember {
+  displayName: string;
+  email?: string;
+  username?: string;
+  avatarUrl?: string;
+}
+
 @Injectable()
 export class RoomsDao {
   private get rooms() {
     return getFirestore().collection(ROOMS_COLLECTION);
+  }
+
+  private get members() {
+    return getFirestore().collectionGroup(MEMBERS_COLLECTION);
+  }
+
+  private roomMembers(roomId: string) {
+    return this.rooms.doc(roomId).collection(MEMBERS_COLLECTION);
   }
 
   private docToRoom(
@@ -54,6 +77,52 @@ export class RoomsDao {
       .get();
 
     return snapshot.docs.map((doc) => this.docToRoom(doc.id, doc.data())!);
+  }
+
+  async findByParticipant(uid: string): Promise<Room[]> {
+    let snapshot: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
+    try {
+      snapshot = await this.members.where('uid', '==', uid).get();
+    } catch (err) {
+      if (this.isMissingCollectionGroupIndexError(err)) {
+        return this.findByParticipantWithoutIndex(uid);
+      }
+
+      throw err;
+    }
+
+    if (snapshot.empty) return [];
+
+    const roomIds = snapshot.docs.map((doc) => String(doc.data().roomId ?? ''));
+    const uniqueRoomIds = Array.from(new Set(roomIds.filter(Boolean)));
+    const rooms = await Promise.all(uniqueRoomIds.map((roomId) => this.findById(roomId)));
+
+    return rooms.filter((room): room is Room => Boolean(room));
+  }
+
+  private isMissingCollectionGroupIndexError(err: unknown): boolean {
+    const maybeError = err as { code?: number; details?: string; message?: string };
+    const message = `${maybeError.details ?? ''} ${maybeError.message ?? ''}`;
+
+    return (
+      maybeError.code === 9 &&
+      message.includes('COLLECTION_GROUP_ASC') &&
+      message.includes(MEMBERS_COLLECTION)
+    );
+  }
+
+  private async findByParticipantWithoutIndex(uid: string): Promise<Room[]> {
+    const snapshot = await this.rooms.get();
+    const rooms = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const member = await this.roomMembers(doc.id).doc(uid).get();
+        if (!member.exists) return null;
+
+        return this.docToRoom(doc.id, doc.data());
+      }),
+    );
+
+    return rooms.filter((room): room is Room => Boolean(room));
   }
 
   async create(data: CreateRoomData): Promise<Room> {
@@ -99,7 +168,57 @@ export class RoomsDao {
       throw new Error('ROOM_NOT_FOUND');
     }
 
-    await this.rooms.doc(roomId).delete();
+    const db = getFirestore();
+    const batch = db.batch();
+    const members = await this.roomMembers(roomId).get();
+
+    members.docs.forEach((doc) => batch.delete(doc.ref));
+    batch.delete(this.rooms.doc(roomId));
+
+    await batch.commit();
+  }
+
+  async addParticipant(roomId: string, uid: string): Promise<Room> {
+    const current = await this.findById(roomId);
+    if (!current) {
+      throw new Error('ROOM_NOT_FOUND');
+    }
+
+    const member: RoomMember = {
+      id: uid,
+      roomId,
+      uid,
+      joinedAt: new Date().toISOString(),
+    };
+
+    await this.roomMembers(roomId).doc(uid).set(member, { merge: true });
+
+    return this.findById(roomId) as Promise<Room>;
+  }
+
+  async removeParticipant(roomId: string, uid: string): Promise<Room> {
+    const current = await this.findById(roomId);
+    if (!current) {
+      throw new Error('ROOM_NOT_FOUND');
+    }
+
+    await this.roomMembers(roomId).doc(uid).delete();
+
+    return this.findById(roomId) as Promise<Room>;
+  }
+
+  async findMembers(roomId: string): Promise<RoomMember[]> {
+    const snapshot = await this.roomMembers(roomId).orderBy('joinedAt', 'asc').get();
+
+    return snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        roomId: String(data.roomId ?? roomId),
+        uid: String(data.uid ?? doc.id),
+        joinedAt: String(data.joinedAt ?? ''),
+      };
+    });
   }
 
   async deleteByOwner(ownerUid: string): Promise<void> {
@@ -110,6 +229,8 @@ export class RoomsDao {
     const batch = db.batch();
 
     for (const room of rooms) {
+      const members = await this.roomMembers(room.id).get();
+      members.docs.forEach((doc) => batch.delete(doc.ref));
       batch.delete(this.rooms.doc(room.id));
     }
 

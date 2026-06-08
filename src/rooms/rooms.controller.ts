@@ -33,7 +33,7 @@ import { UpdateRoomDto } from './dto/update-room.dto';
 @UseGuards(FirebaseAuthGuard)
 @ApiBearerAuth()
 export class RoomsController {
-  constructor(private readonly roomsService: RoomsService) {}
+  constructor(private readonly roomsService: RoomsService) { }
 
   @Post()
   @ApiOperation({
@@ -93,6 +93,50 @@ export class RoomsController {
     }
 
     return this.roomsService.getMyRooms(req.user);
+  }
+
+  @Post(':roomId/join')
+  @ApiOperation({
+    summary: 'Unirse a una sala',
+    description:
+      'Agrega la sala al dashboard del usuario autenticado como participante. No cambia el propietario de la sala.',
+  })
+  @ApiParam({
+    name: 'roomId',
+    description: 'ID único de la sala',
+    example: 'abc123xyz',
+  })
+  @ApiOkResponse({ description: 'Sala agregada al dashboard del usuario.' })
+  @ApiNotFoundResponse({ description: 'Sala no encontrada.' })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
+  async joinRoom(@Req() req: Request, @Param('roomId') roomId: string) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado');
+    }
+
+    return this.roomsService.joinRoom(req.user, roomId);
+  }
+
+  @Get(':roomId/members')
+  @ApiOperation({
+    summary: 'Obtener miembros de una sala',
+    description:
+      'Retorna los usuarios que aparecen en la subcolección miembros de la sala, incluyendo al propietario.',
+  })
+  @ApiParam({
+    name: 'roomId',
+    description: 'ID único de la sala',
+    example: 'abc123xyz',
+  })
+  @ApiOkResponse({ description: 'Lista de miembros de la sala.' })
+  @ApiNotFoundResponse({ description: 'Sala no encontrada.' })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
+  async getRoomMembers(@Req() req: Request, @Param('roomId') roomId: string) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado');
+    }
+
+    return this.roomsService.getRoomMembers(req.user, roomId);
   }
 
   @Get(':roomId')
@@ -170,6 +214,46 @@ export class RoomsController {
     }
 
     return this.roomsService.updateRoom(req.user, roomId, dto);
+  }
+
+  @Delete(':roomId/membership')
+  @ApiOperation({
+    summary: 'Quitar una sala del dashboard',
+    description:
+      'Permite a un participante quitar la sala de su dashboard sin borrar la sala para los demás usuarios.',
+  })
+  @ApiParam({
+    name: 'roomId',
+    description: 'ID único de la sala',
+    example: 'abc123xyz',
+  })
+  @ApiOkResponse({
+    description: 'Sala quitada del dashboard del participante.',
+    schema: {
+      example: {
+        removed: true,
+        message: 'Room removed from dashboard',
+      },
+    },
+  })
+  @ApiNotFoundResponse({ description: 'Sala no encontrada.' })
+  @ApiForbiddenResponse({
+    description: 'El propietario no puede quitar su propia sala por esta ruta.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
+  async removeMembership(
+    @Req() req: Request,
+    @Param('roomId') roomId: string,
+  ) {
+    if (!req.user) {
+      throw new UnauthorizedException('Token inválido o no suministrado');
+    }
+
+    await this.roomsService.removeMembership(req.user, roomId);
+    return {
+      removed: true,
+      message: 'Room removed from dashboard',
+    };
   }
 
   @Delete(':roomId')
