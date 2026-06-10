@@ -26,6 +26,7 @@ import type { Request } from 'express';
 import { FirebaseAuthGuard } from '../auth/guards/firebase-auth/firebase-auth.guard';
 import { RoomsService } from './rooms.service';
 import { CreateRoomDto } from './dto/create-room.dto';
+import { JoinRoomDto } from './dto/join-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
 @ApiTags('rooms')
@@ -50,6 +51,7 @@ export class RoomsController {
     schema: {
       example: {
         id: 'abc123xyz',
+        roomCode: 'A7K9XQ',
         name: 'Sala de Estudio Matemáticas',
         ownerUid: 'user123',
         createdAt: '2026-06-02T10:00:00.000Z',
@@ -78,6 +80,7 @@ export class RoomsController {
       example: [
         {
           id: 'abc123xyz',
+          roomCode: 'A7K9XQ',
           name: 'Sala de Estudio Matemáticas',
           ownerUid: 'user123',
           createdAt: '2026-06-02T10:00:00.000Z',
@@ -95,26 +98,25 @@ export class RoomsController {
     return this.roomsService.getMyRooms(req.user);
   }
 
-  @Post(':roomId/join')
+  @Post('join')
   @ApiOperation({
-    summary: 'Unirse a una sala',
+    summary: 'Unirse a una sala por código',
     description:
-      'Agrega la sala al dashboard del usuario autenticado como participante. No cambia el propietario de la sala.',
+      'Resuelve el código de acceso en roomCodes, agrega la sala al dashboard del usuario autenticado como participante y devuelve la sala.',
   })
-  @ApiParam({
-    name: 'roomId',
-    description: 'ID único de la sala',
-    example: 'abc123xyz',
+  @ApiBody({
+    type: JoinRoomDto,
+    description: 'Código alfanumérico de 6 caracteres de la sala.',
   })
   @ApiOkResponse({ description: 'Sala agregada al dashboard del usuario.' })
   @ApiNotFoundResponse({ description: 'Sala no encontrada.' })
   @ApiUnauthorizedResponse({ description: 'Token inválido o no suministrado.' })
-  async joinRoom(@Req() req: Request, @Param('roomId') roomId: string) {
+  async joinRoomByCode(@Req() req: Request, @Body() dto: JoinRoomDto) {
     if (!req.user) {
       throw new UnauthorizedException('Token inválido o no suministrado');
     }
 
-    return this.roomsService.joinRoom(req.user, roomId);
+    return this.roomsService.joinRoomByCode(req.user, dto);
   }
 
   @Get('my-rooms/members')
@@ -195,6 +197,7 @@ export class RoomsController {
     schema: {
       example: {
         id: 'abc123xyz',
+        roomCode: 'A7K9XQ',
         name: 'Sala de Estudio Matemáticas',
         ownerUid: 'user123',
         createdAt: '2026-06-02T10:00:00.000Z',
@@ -232,6 +235,7 @@ export class RoomsController {
     schema: {
       example: {
         id: 'abc123xyz',
+        roomCode: 'A7K9XQ',
         name: 'Sala de Estudio Matemáticas Avanzadas',
         ownerUid: 'user123',
         createdAt: '2026-06-02T10:00:00.000Z',

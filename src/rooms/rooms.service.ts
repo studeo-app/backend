@@ -7,7 +7,9 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import { RoomsDao, CreateRoomData, Room, RoomMemberProfile } from '../daos/rooms.dao';
 import { UsersDao } from '../daos/users.dao';
 import { CreateRoomDto } from './dto/create-room.dto';
+import { JoinRoomDto } from './dto/join-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
+import { normalizeRoomCode } from './utils/room-code.util';
 
 @Injectable()
 export class RoomsService {
@@ -90,6 +92,17 @@ export class RoomsService {
     }
 
     await this.roomsDao.delete(roomId);
+  }
+
+  async joinRoomByCode(decoded: DecodedIdToken, dto: JoinRoomDto): Promise<Room> {
+    const roomCode = normalizeRoomCode(dto.roomCode);
+    const roomId = await this.roomsDao.findRoomIdByCode(roomCode);
+
+    if (!roomId) {
+      throw new NotFoundException(`Room with code ${roomCode} was not found`);
+    }
+
+    return this.joinRoom(decoded, roomId);
   }
 
   async joinRoom(decoded: DecodedIdToken, roomId: string): Promise<Room> {
