@@ -1,9 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { getFirestore } from '../config/firebase.config';
 import type { UpdateData } from 'firebase-admin/firestore';
+import {
+  generateRoomCode,
+  normalizeRoomCode,
+} from '../rooms/utils/room-code.util';
 
 const ROOMS_COLLECTION = 'rooms';
+const ROOM_CODES_COLLECTION = 'roomCodes';
 const MEMBERS_COLLECTION = 'miembros';
+const MAX_ROOM_CODE_ATTEMPTS = 10;
+
+class RoomCodeCollisionError extends Error {
+  constructor() {
+    super('ROOM_CODE_COLLISION');
+    this.name = 'RoomCodeCollisionError';
+  }
+}
 
 export interface CreateRoomData {
   name: string;
@@ -13,11 +26,16 @@ export interface CreateRoomData {
 
 export interface Room {
   id: string;
+  roomCode: string;
   name: string;
   ownerUid: string;
   createdAt: string;
   updatedAt: string;
   imageUrl?: string;
+}
+
+export interface RoomCodeMapping {
+  roomId: string;
 }
 
 export interface RoomMember {
@@ -44,6 +62,10 @@ export class RoomsDao {
     return getFirestore().collectionGroup(MEMBERS_COLLECTION);
   }
 
+  private get roomCodes() {
+    return getFirestore().collection(ROOM_CODES_COLLECTION);
+  }
+
   private roomMembers(roomId: string) {
     return this.rooms.doc(roomId).collection(MEMBERS_COLLECTION);
   }
@@ -56,12 +78,24 @@ export class RoomsDao {
 
     return {
       id,
+      roomCode: String(data.roomCode ?? ''),
       name: String(data.name ?? ''),
       ownerUid: String(data.ownerUid ?? ''),
       createdAt: String(data.createdAt ?? ''),
       updatedAt: String(data.updatedAt ?? ''),
       imageUrl: data.imageUrl ? String(data.imageUrl) : undefined,
     };
+  }
+
+  async findRoomIdByCode(roomCode: string): Promise<string | null> {
+    const normalizedCode = normalizeRoomCode(roomCode);
+    if (!normalizedCode) return null;
+
+    const snapshot = await this.roomCodes.doc(normalizedCode).get();
+    if (!snapshot.exists) return null;
+
+    const roomId = String(snapshot.data()?.roomId ?? '');
+    return roomId || null;
   }
 
   async findById(roomId: string): Promise<Room | null> {
@@ -128,21 +162,47 @@ export class RoomsDao {
   async create(data: CreateRoomData): Promise<Room> {
     const now = new Date().toISOString();
     const roomId = getFirestore().collection(ROOMS_COLLECTION).doc().id;
+    const db = getFirestore();
 
-    const room: Room = {
-      id: roomId,
-      name: data.name,
-      ownerUid: data.ownerUid,
-      createdAt: now,
-      updatedAt: now,
-    };
+    for (let attempt = 0; attempt < MAX_ROOM_CODE_ATTEMPTS; attempt++) {
+      const roomCode = generateRoomCode();
+      const room: Room = {
+        id: roomId,
+        roomCode,
+        name: data.name,
+        ownerUid: data.ownerUid,
+        createdAt: now,
+        updatedAt: now,
+      };
 
-    if (data.imageUrl) {
-      room.imageUrl = data.imageUrl;
+      if (data.imageUrl) {
+        room.imageUrl = data.imageUrl;
+      }
+
+      try {
+        await db.runTransaction(async (transaction) => {
+          const codeRef = this.roomCodes.doc(roomCode);
+          const codeSnapshot = await transaction.get(codeRef);
+
+          if (codeSnapshot.exists) {
+            throw new RoomCodeCollisionError();
+          }
+
+          transaction.set(codeRef, { roomId } satisfies RoomCodeMapping);
+          transaction.set(this.rooms.doc(roomId), room);
+        });
+
+        return room;
+      } catch (err) {
+        if (err instanceof RoomCodeCollisionError) {
+          continue;
+        }
+
+        throw err;
+      }
     }
 
-    await this.rooms.doc(roomId).set(room);
-    return room;
+    throw new Error('ROOM_CODE_GENERATION_FAILED');
   }
 
   async update(roomId: string, partial: Partial<Room>): Promise<Room> {
@@ -174,6 +234,10 @@ export class RoomsDao {
 
     members.docs.forEach((doc) => batch.delete(doc.ref));
     batch.delete(this.rooms.doc(roomId));
+
+    if (current.roomCode) {
+      batch.delete(this.roomCodes.doc(current.roomCode));
+    }
 
     await batch.commit();
   }
@@ -232,6 +296,10 @@ export class RoomsDao {
       const members = await this.roomMembers(room.id).get();
       members.docs.forEach((doc) => batch.delete(doc.ref));
       batch.delete(this.rooms.doc(room.id));
+
+      if (room.roomCode) {
+        batch.delete(this.roomCodes.doc(room.roomCode));
+      }
     }
 
     await batch.commit();
