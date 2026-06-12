@@ -22,4 +22,11 @@ export class UpdateRoomDto {
       'El nombre de la sala solo puede contener letras, números y espacios',
   })
   name?: string; // <-- Con "?" no da error porque ya es opcional
+
+  @ApiPropertyOptional({
+    example: 'https://res.cloudinary.com/demo/image/upload/sample.jpg',
+  })
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
 }
