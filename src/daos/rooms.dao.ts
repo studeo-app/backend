@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { getFirestore } from '../config/firebase.config';
-import type { UpdateData } from 'firebase-admin/firestore';
+import type { DocumentReference, UpdateData } from 'firebase-admin/firestore';
 import {
   generateRoomCode,
   normalizeRoomCode,
@@ -8,7 +8,9 @@ import {
 
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_CODES_COLLECTION = 'roomCodes';
-const MEMBERS_COLLECTION = 'miembros';
+const MEMBERS_COLLECTION = 'members';
+const MESSAGES_COLLECTION = 'messages';
+const FIRESTORE_BATCH_LIMIT = 450;
 const MAX_ROOM_CODE_ATTEMPTS = 10;
 
 class RoomCodeCollisionError extends Error {
@@ -45,6 +47,10 @@ export interface RoomMember {
   joinedAt: string;
 }
 
+interface RoomMemberDocument {
+  joinedAt: string;
+}
+
 export interface RoomMemberProfile extends RoomMember {
   displayName: string;
   email?: string;
@@ -58,16 +64,16 @@ export class RoomsDao {
     return getFirestore().collection(ROOMS_COLLECTION);
   }
 
-  private get members() {
-    return getFirestore().collectionGroup(MEMBERS_COLLECTION);
-  }
-
   private get roomCodes() {
     return getFirestore().collection(ROOM_CODES_COLLECTION);
   }
 
   private roomMembers(roomId: string) {
     return this.rooms.doc(roomId).collection(MEMBERS_COLLECTION);
+  }
+
+  private roomMessages(roomId: string) {
+    return this.rooms.doc(roomId).collection(MESSAGES_COLLECTION);
   }
 
   private docToRoom(
@@ -114,35 +120,7 @@ export class RoomsDao {
   }
 
   async findByParticipant(uid: string): Promise<Room[]> {
-    let snapshot: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
-    try {
-      snapshot = await this.members.where('uid', '==', uid).get();
-    } catch (err) {
-      if (this.isMissingCollectionGroupIndexError(err)) {
-        return this.findByParticipantWithoutIndex(uid);
-      }
-
-      throw err;
-    }
-
-    if (snapshot.empty) return [];
-
-    const roomIds = snapshot.docs.map((doc) => String(doc.data().roomId ?? ''));
-    const uniqueRoomIds = Array.from(new Set(roomIds.filter(Boolean)));
-    const rooms = await Promise.all(uniqueRoomIds.map((roomId) => this.findById(roomId)));
-
-    return rooms.filter((room): room is Room => Boolean(room));
-  }
-
-  private isMissingCollectionGroupIndexError(err: unknown): boolean {
-    const maybeError = err as { code?: number; details?: string; message?: string };
-    const message = `${maybeError.details ?? ''} ${maybeError.message ?? ''}`;
-
-    return (
-      maybeError.code === 9 &&
-      message.includes('COLLECTION_GROUP_ASC') &&
-      message.includes(MEMBERS_COLLECTION)
-    );
+    return this.findByParticipantWithoutIndex(uid);
   }
 
   private async findByParticipantWithoutIndex(uid: string): Promise<Room[]> {
@@ -228,18 +206,7 @@ export class RoomsDao {
       throw new Error('ROOM_NOT_FOUND');
     }
 
-    const db = getFirestore();
-    const batch = db.batch();
-    const members = await this.roomMembers(roomId).get();
-
-    members.docs.forEach((doc) => batch.delete(doc.ref));
-    batch.delete(this.rooms.doc(roomId));
-
-    if (current.roomCode) {
-      batch.delete(this.roomCodes.doc(current.roomCode));
-    }
-
-    await batch.commit();
+    await this.deleteRoomDocuments(current);
   }
 
   async addParticipant(roomId: string, uid: string): Promise<Room> {
@@ -248,14 +215,11 @@ export class RoomsDao {
       throw new Error('ROOM_NOT_FOUND');
     }
 
-    const member: RoomMember = {
-      id: uid,
-      roomId,
-      uid,
+    const member: RoomMemberDocument = {
       joinedAt: new Date().toISOString(),
     };
 
-    await this.roomMembers(roomId).doc(uid).set(member, { merge: true });
+    await this.roomMembers(roomId).doc(uid).set(member);
 
     return this.findById(roomId) as Promise<Room>;
   }
@@ -278,8 +242,8 @@ export class RoomsDao {
       const data = doc.data();
       return {
         id: doc.id,
-        roomId: String(data.roomId ?? roomId),
-        uid: String(data.uid ?? doc.id),
+        roomId,
+        uid: doc.id,
         joinedAt: String(data.joinedAt ?? ''),
       };
     });
@@ -289,20 +253,41 @@ export class RoomsDao {
     const rooms = await this.findByOwner(ownerUid);
     if (rooms.length === 0) return;
 
-    const db = getFirestore();
-    const batch = db.batch();
-
     for (const room of rooms) {
-      const members = await this.roomMembers(room.id).get();
-      members.docs.forEach((doc) => batch.delete(doc.ref));
-      batch.delete(this.rooms.doc(room.id));
+      await this.deleteRoomDocuments(room);
+    }
+  }
 
-      if (room.roomCode) {
-        batch.delete(this.roomCodes.doc(room.roomCode));
-      }
+  private async deleteRoomDocuments(room: Room): Promise<void> {
+    const docsToDelete: DocumentReference[] = [
+      this.rooms.doc(room.id),
+    ];
+
+    if (room.roomCode) {
+      docsToDelete.push(this.roomCodes.doc(room.roomCode));
     }
 
-    await batch.commit();
+    const [members, messages] = await Promise.all([
+      this.roomMembers(room.id).get(),
+      this.roomMessages(room.id).get(),
+    ]);
+
+    docsToDelete.push(
+      ...members.docs.map((doc) => doc.ref),
+      ...messages.docs.map((doc) => doc.ref),
+    );
+
+    await this.commitDeletesInBatches(docsToDelete);
+  }
+
+  private async commitDeletesInBatches(refs: DocumentReference[]): Promise<void> {
+    const db = getFirestore();
+
+    for (let index = 0; index < refs.length; index += FIRESTORE_BATCH_LIMIT) {
+      const batch = db.batch();
+      refs.slice(index, index + FIRESTORE_BATCH_LIMIT).forEach((ref) => batch.delete(ref));
+      await batch.commit();
+    }
   }
 }
 
