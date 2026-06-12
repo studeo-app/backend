@@ -137,23 +137,13 @@ export class RoomsService {
     decoded: DecodedIdToken,
     roomId: string,
   ): Promise<RoomMemberProfile[]> {
-    console.log('[RoomsService] getRoomMembers:start', {
-      uid: decoded.uid,
-      roomId,
-    });
     const room = await this.roomsDao.findById(roomId);
 
     if (!room) {
-      console.log('[RoomsService] getRoomMembers:not-found', { roomId });
       throw new NotFoundException(`Room with id ${roomId} was not found`);
     }
 
     const members = await this.roomsDao.findMembers(roomId);
-    console.log('[RoomsService] getRoomMembers:members-docs', {
-      roomId,
-      count: members.length,
-      uids: members.map((member) => member.uid),
-    });
     const profiles = await Promise.all(
       members.map(async (member) => {
         const profile = await this.usersDao.findById(member.uid);
@@ -174,11 +164,6 @@ export class RoomsService {
     );
 
     const ownerProfile = await this.usersDao.findById(room.ownerUid);
-    console.log('[RoomsService] getRoomMembers:owner-profile', {
-      roomId,
-      ownerUid: room.ownerUid,
-      found: Boolean(ownerProfile),
-    });
     const ownerDisplayName = ownerProfile
       ? `${ownerProfile.firstName} ${ownerProfile.lastName}`.trim() ||
         ownerProfile.username ||
@@ -198,24 +183,13 @@ export class RoomsService {
       },
       ...profiles.filter((member) => member.uid !== room.ownerUid),
     ];
-    console.log('[RoomsService] getRoomMembers:success', {
-      roomId,
-      count: result.length,
-    });
     return result;
   }
 
   async getMyRoomsMembers(
     decoded: DecodedIdToken,
   ): Promise<Record<string, RoomMemberProfile[]>> {
-    console.log('[RoomsService] getMyRoomsMembers:start', {
-      uid: decoded.uid,
-    });
     const rooms = await this.getMyRooms(decoded);
-    console.log('[RoomsService] getMyRoomsMembers:rooms', {
-      uid: decoded.uid,
-      roomIds: rooms.map((room) => room.id),
-    });
     const entries = await Promise.all(
       rooms.map(async (room) => [
         room.id,
@@ -223,16 +197,6 @@ export class RoomsService {
       ] as const),
     );
 
-    const result = Object.fromEntries(entries);
-    console.log('[RoomsService] getMyRoomsMembers:success', {
-      uid: decoded.uid,
-      counts: Object.fromEntries(
-        Object.entries(result).map(([roomId, members]) => [
-          roomId,
-          members.length,
-        ]),
-      ),
-    });
-    return result;
+    return Object.fromEntries(entries);
   }
 }
