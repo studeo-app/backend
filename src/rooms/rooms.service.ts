@@ -68,12 +68,17 @@ export class RoomsService {
     }
 
     const updateData: Partial<Room> = {};
+    // ✅ Filtrar valores undefined explícitamente
     if (dto.name !== undefined) {
       updateData.name = dto.name.trim();
     }
     if (dto.imageUrl !== undefined) {
-      const cleanImageUrl = dto.imageUrl.trim();
-      updateData.imageUrl = cleanImageUrl;
+      updateData.imageUrl = dto.imageUrl.trim();
+    }
+
+    // ✅ Verificar que hay algo que actualizar
+    if (Object.keys(updateData).length === 0) {
+      return room; // No hay cambios, retornar la sala actual
     }
 
     return this.roomsDao.update(roomId, updateData);
