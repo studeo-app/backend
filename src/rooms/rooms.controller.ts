@@ -132,28 +132,14 @@ export class RoomsController {
       throw new UnauthorizedException('Token inválido o no suministrado');
     }
 
-    console.log('[RoomsController] getMyRoomsMembers:start', {
-      uid: req.user.uid,
-    });
-    const result = await this.roomsService.getMyRoomsMembers(req.user);
-    console.log('[RoomsController] getMyRoomsMembers:success', {
-      uid: req.user.uid,
-      roomIds: Object.keys(result),
-      counts: Object.fromEntries(
-        Object.entries(result).map(([roomId, members]) => [
-          roomId,
-          members.length,
-        ]),
-      ),
-    });
-    return result;
+    return this.roomsService.getMyRoomsMembers(req.user);
   }
 
   @Get(':roomId/members')
   @ApiOperation({
     summary: 'Obtener miembros de una sala',
     description:
-      'Retorna los usuarios que aparecen en la subcolección miembros de la sala, incluyendo al propietario.',
+      'Retorna los usuarios que aparecen en la subcoleccion members de la sala, incluyendo al propietario.',
   })
   @ApiParam({
     name: 'roomId',
@@ -168,17 +154,7 @@ export class RoomsController {
       throw new UnauthorizedException('Token inválido o no suministrado');
     }
 
-    console.log('[RoomsController] getRoomMembers:start', {
-      uid: req.user.uid,
-      roomId,
-    });
-    const result = await this.roomsService.getRoomMembers(req.user, roomId);
-    console.log('[RoomsController] getRoomMembers:success', {
-      uid: req.user.uid,
-      roomId,
-      count: result.length,
-    });
-    return result;
+    return this.roomsService.getRoomMembers(req.user, roomId);
   }
 
   @Get(':roomId')
@@ -304,7 +280,7 @@ export class RoomsController {
   @ApiOperation({
     summary: 'Eliminar una sala',
     description:
-      'Elimina permanentemente una sala. Solo el anfitrión puede realizar esta acción.',
+      'Elimina permanentemente una sala, sus subcolecciones messages y members, y su codigo en roomCodes. Solo el anfitrion puede realizar esta accion.',
   })
   @ApiParam({
     name: 'roomId',

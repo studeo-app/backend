@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RoomsService } from './rooms.service';
 import { RoomsDao } from '../daos/rooms.dao';
+import { UsersDao } from '../daos/users.dao';
 
 describe('RoomsService', () => {
   let service: RoomsService;
@@ -18,6 +19,12 @@ describe('RoomsService', () => {
             update: jest.fn(),
             delete: jest.fn(),
             deleteByOwner: jest.fn(),
+          },
+        },
+        {
+          provide: UsersDao,
+          useValue: {
+            findById: jest.fn(),
           },
         },
       ],
