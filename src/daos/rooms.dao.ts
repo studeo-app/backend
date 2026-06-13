@@ -190,14 +190,24 @@ export class RoomsDao {
     }
 
     const now = new Date().toISOString();
-    const updated: Room = {
+
+    // ✅ Filtrar valores undefined del partial
+    const cleanPartial = Object.fromEntries(
+      Object.entries(partial).filter(([_, value]) => value !== undefined)
+    );
+
+    // ✅ Actualizar SOLO los campos que cambiaron (no el documento completo)
+    await this.rooms.doc(roomId).update({
+      ...cleanPartial,
+      updatedAt: now,
+    });
+
+    // ✅ Retornar el objeto actualizado (combinando current + cambios)
+    return {
       ...current,
-      ...partial,
+      ...cleanPartial,
       updatedAt: now,
     };
-
-    await this.rooms.doc(roomId).update(updated as UpdateData<Room>);
-    return updated;
   }
 
   async delete(roomId: string): Promise<void> {
