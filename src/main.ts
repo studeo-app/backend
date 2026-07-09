@@ -8,14 +8,19 @@ async function bootstrap() {
   // Inicializar Firebase antes de arrancar
   initializeFirebase()
 
+
+
   const app = await NestFactory.create(AppModule)
 
   // Prefijo global
   app.setGlobalPrefix('api')
 
   // CORS
+
+  const corsOrigins = process.env.FRONTEND_URL?.split(',').map((url) => url.trim()) ?? [];
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL,
+    origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   })
 
